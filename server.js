@@ -128,18 +128,24 @@ app.post('/api/send-photo', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   
-  // আপনার Suga পাবলিক URL এখানে বসবে (যেমন: https://cam-phisher.suga.app)
-  const SUGA_PUBLIC_URL = process.env.SUGA_PUBLIC_URL;
+  // Suga স্বয়ংক্রিয়ভাবে SUGA_PUBLIC_HOSTNAME তৈরি করে
+  const sugaPublicHostname = process.env.SUGA_PUBLIC_HOSTNAME;
 
-  if (SUGA_PUBLIC_URL) {
-    const webhookUrl = `${SUGA_PUBLIC_URL}/bot${BOT_TOKEN}`;
+  if (sugaPublicHostname) {
+    // Suga-র হোস্টনেম থেকে সম্পূর্ণ URL তৈরি করা
+    const publicUrl = sugaPublicHostname.startsWith('http') 
+      ? sugaPublicHostname 
+      : `https://${sugaPublicHostname}`;
+      
+    const webhookUrl = `${publicUrl}/bot${BOT_TOKEN}`;
+    
     try {
       await bot.setWebHook(webhookUrl);
-      console.log(`Webhook set successfully to: ${webhookUrl}`);
+      console.log(`✅ Webhook set successfully to: ${webhookUrl}`);
     } catch (err) {
-      console.error("Failed to set webhook:", err.message);
+      console.error("❌ Failed to set webhook:", err.message);
     }
   } else {
-    console.warn("⚠️ SUGA_PUBLIC_URL is missing. Webhook could not be set. Bot won't receive messages.");
+    console.warn("⚠️ SUGA_PUBLIC_HOSTNAME not found. Webhook could not be set.");
   }
 });
