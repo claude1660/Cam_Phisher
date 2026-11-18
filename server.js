@@ -121,7 +121,7 @@ app.post('/api/send-photo', async (req, res) => {
     // বাফার মেমোরি থেকে ছবি পাঠানো
     await bot.sendPhoto(session.chatId, buffer, { caption: "📸 Auto-verified photo" });
     
-    // মেমোরি ক্লিয়ার করতে বাফারটি নাল করা (Optional but good practice)
+    // মেমোরি ক্লিয়ার করতে বাফারটি নাল করা
     buffer.fill(0); 
 
     res.json({ success: true });
@@ -133,9 +133,11 @@ app.post('/api/send-photo', async (req, res) => {
 });
 
 // --- 🧹 মেমোরি ক্লিনার (প্রতি ৫ মিনিটে চলবে) ---
+// এখানে FIVE_MINUTES ভ্যারিয়েবলটি ঠিকভাবে ডিফাইন করা হয়েছে
+const FIVE_MINUTES = 5 * 60 * 1000; 
+
 setInterval(() => {
   const now = Date.now();
-  const FIVE_MINUTES = 5 * 60 * 1000;
   let cleanedSessions = 0;
 
   for (const sessionId in activeSessions) {
@@ -146,12 +148,12 @@ setInterval(() => {
     }
   }
 
-  // মেমোরি ক্লিন করার লগ (Suga Logs-এ দেখা যাবে)
+  // মেমোরি ক্লিন করার লগ
   if (cleanedSessions > 0) {
     console.log(`🧹 Memory Cleaned: Removed ${cleanedSessions} expired sessions.`);
   }
   
-  // Node.js-কে গার্বেজ কলেকশন করতে বলা (যদি গ্লোবাল gc অ্যাক্সেস থাকে)
+  // Node.js-কে গার্বেজ কলেকশন করতে বলা
   if (global.gc) {
     global.gc();
   }
