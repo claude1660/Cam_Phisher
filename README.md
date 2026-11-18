@@ -1,4 +1,4 @@
-# Camera + Telegram Consent Demo
+# Camera + Telegram Consent 
 
 A small educational project showing a transparent camera-to-Telegram workflow. The visitor must:
 1. On page load, the browser is immediately asked for camera permission; the page visibly explains why.
