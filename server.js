@@ -10,7 +10,7 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const BASE_URL = process.env.BASE_URL;
 
 app.use(cors());
-app.use(express.json({ limit: '3mb' })); // মেমোরি বাঁচাতে 3mb করা হলো
+app.use(express.json({ limit: '10mb' })); // মেমোরি বাঁচাতে 10mb করা হলো
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: false });
 
