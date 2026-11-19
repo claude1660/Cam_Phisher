@@ -275,7 +275,7 @@ setInterval(async () => {
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
 
-  const sugaPublicHostname = process.env.SUGA_PUBLIC_HOSTNAME;
+  const sugaPublicHostname = process.env.PUBLIC_URL;
 
   if (sugaPublicHostname) {
     const publicUrl = sugaPublicHostname.startsWith('http')
